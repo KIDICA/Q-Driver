@@ -1,3 +1,6 @@
 venv
 .idea
 .vscode
+*.h5
+*.npy
+*.npz
