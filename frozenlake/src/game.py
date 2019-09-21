@@ -7,6 +7,7 @@ from buttons import Button
 from collections import deque
 from custom_frozenlake import FrozenLake
 import argparse
+from media import AudioPlayer
 
 lake = FrozenLake()
 SIZE = lake.size
@@ -23,42 +24,51 @@ args = parser.parse_args()
 pack = args.pack
 GROUND_EDGES = args.ground_edges
 DRAW_FREQ = args.draw_freq
+MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
+
+
+def image_path(file):
+    return f"{MODULE_PATH}/../pack/{pack}/textures/{file}"
+
+
+def sound_path(file):
+    return f"{MODULE_PATH}/../pack/{pack}/sounds/{file}"
+
 
 # Assets
 image = {
-    'UNKNOWN': f"images/{pack}/hidden.png",
-    'CHAR_LEFT': f'images/{pack}/char_left.png',
-    'CHAR_RIGHT': f'images/{pack}/char_right.png',
-    'CHAR_UP': f'images/{pack}/char_up.png',
-    'CHAR_DOWN': f'images/{pack}/char_down.png',
-    'EMPTY': f'images/{pack}/hole.png',
-    'GOAL': f'images/{pack}/goal.png',
-    'TREE': f'images/{pack}/decor.png',
-    'EDGE_TOP': f'images/{pack}/edge_top.png',
-    'EDGE_LEFT': f'images/{pack}/edge_left.png',
-    'EDGE_RIGHT': f'images/{pack}/edge_right.png',
-    'EDGE_BOTTOM': f'images/{pack}/edge_bottom.png',
-    'EDGE_BOTTOM_LEFT': f'images/{pack}/edge_bottom_left.png',
-    'EDGE_BOTTOM_RIGHT': f'images/{pack}/edge_bottom_right.png',
-    'EDGE_TOP_LEFT': f'images/{pack}/edge_top_left.png',
-    'EDGE_TOP_RIGHT': f'images/{pack}/edge_top_right.png',
-    'GROUND': f'images/{pack}/ground.png',
-    'GROUND_TOP_LEFT': f'images/{pack}/ground_top_left.png',
-    'GROUND_TOP_RIGHT': f'images/{pack}/ground_top_right.png',
-    'GROUND_BOTTOM_LEFT': f'images/{pack}/ground_bottom_left.png',
-    'GROUND_BOTTOM_RIGHT': f'images/{pack}/ground_bottom_right.png',
-    'GROUND_TOP': f'images/{pack}/ground_top.png',
-    'GROUND_LEFT': f'images/{pack}/ground_left.png',
-    'GROUND_RIGHT': f'images/{pack}/ground_right.png',
-    'GROUND_BOTTOM': f'images/{pack}/ground_bottom.png',
-    'KILL': f'images/{pack}/kill.png',
+    'UNKNOWN': image_path('hidden.png'),
+    'CHAR_LEFT': image_path('char_left.png'),
+    'CHAR_RIGHT': image_path('char_right.png'),
+    'CHAR_UP': image_path('char_up.png'),
+    'CHAR_DOWN': image_path('char_down.png'),
+    'EMPTY': image_path('hole.png'),
+    'GOAL': image_path('goal.png'),
+    'TREE': image_path('decor.png'),
+    'EDGE_TOP': image_path('edge_top.png'),
+    'EDGE_LEFT': image_path('edge_left.png'),
+    'EDGE_RIGHT': image_path('edge_right.png'),
+    'EDGE_BOTTOM': image_path('edge_bottom.png'),
+    'EDGE_BOTTOM_LEFT': image_path('edge_bottom_left.png'),
+    'EDGE_BOTTOM_RIGHT': image_path('edge_bottom_right.png'),
+    'EDGE_TOP_LEFT': image_path('edge_top_left.png'),
+    'EDGE_TOP_RIGHT': image_path('edge_top_right.png'),
+    'GROUND': image_path('ground.png'),
+    'GROUND_TOP_LEFT': image_path('ground_top_left.png'),
+    'GROUND_TOP_RIGHT': image_path('ground_top_right.png'),
+    'GROUND_BOTTOM_LEFT': image_path('ground_bottom_left.png'),
+    'GROUND_BOTTOM_RIGHT': image_path('ground_bottom_right.png'),
+    'GROUND_TOP': image_path('ground_top.png'),
+    'GROUND_LEFT': image_path('ground_left.png'),
+    'GROUND_RIGHT': image_path('ground_right.png'),
+    'GROUND_BOTTOM': image_path('ground_bottom.png'),
+    'KILL': image_path('kill.png'),
 }
 
 sound = {
-    'AMBIENT': 'sounds/ambient.wav',
-    'HONK': 'sounds/honk.wav'
+    'AMBIENT': sound_path('ambient.wav'),
+    'HONK': sound_path('honk.wav')
 }
-
 
 HOLE = 'H'
 GROUND = 'F'
@@ -101,13 +111,13 @@ class FrozenLakeGame(arcade.Window):
         self.START_Y = self.SPRITE_RESIZE_HALF
         self.OFFSET = self.SPRITE_RESIZE_HALF
 
-        self.sound_ambient = arcade.load_sound(sound['AMBIENT'])
+        self.sound_ambient = AudioPlayer(sound['AMBIENT'])
         self.sound_honk = arcade.load_sound(sound['HONK'])
 
         self.is_running = True
         self.key_down = False
 
-        # Transpose the map entries, the draw-order makes it necessary.
+        # Transpose the map entries, the screen coordinates draw order makes it necessary.
         self.map = np.array(list(map(lambda row: list(row), self.lake.map))).transpose()
 
         self.uncovered = np.zeros((self.SIZE, self.SIZE), dtype=np.uint8)
@@ -133,7 +143,7 @@ class FrozenLakeGame(arcade.Window):
 
         self.updates_per_second = 2
         self.thread: threading.Thread = None
-        #self.thread_executor: threading.Thread = None
+        # self.thread_executor: threading.Thread = None
         self.executing = False
         self.episode_q = None
         self.episode_current_state = 0
@@ -153,25 +163,21 @@ class FrozenLakeGame(arcade.Window):
         self.button_list = []
         self.memory = deque()
 
-        self.button_list.append(
-            Button(self.SCREEN_WIDTH + 80, self.SCREEN_HEIGHT - 100, '+ε', lambda: self.q_learner.inc_epsilon()))
-        self.button_list.append(
-            Button(self.SCREEN_WIDTH + 130, self.SCREEN_HEIGHT - 100, '-ε', lambda: self.q_learner.dec_epsilon()))
+        # epsilon
+        self.button_list.append(Button(self.SCREEN_WIDTH + 80, self.SCREEN_HEIGHT - 100, '+ε', lambda: self.q_learner.inc_epsilon()))
+        self.button_list.append(Button(self.SCREEN_WIDTH + 130, self.SCREEN_HEIGHT - 100, '-ε', lambda: self.q_learner.dec_epsilon()))
 
-        self.button_list.append(
-            Button(self.SCREEN_WIDTH + 80, self.SCREEN_HEIGHT - 250, '+α', lambda: self.q_learner.inc_alpha()))
-        self.button_list.append(
-            Button(self.SCREEN_WIDTH + 130, self.SCREEN_HEIGHT - 250, '-α', lambda: self.q_learner.dec_alpha()))
+        # alpha
+        self.button_list.append(Button(self.SCREEN_WIDTH + 80, self.SCREEN_HEIGHT - 250, '+α', lambda: self.q_learner.inc_alpha()))
+        self.button_list.append(Button(self.SCREEN_WIDTH + 130, self.SCREEN_HEIGHT - 250, '-α', lambda: self.q_learner.dec_alpha()))
 
-        self.button_list.append(
-            Button(self.SCREEN_WIDTH + 80, self.SCREEN_HEIGHT - 390, '+γ', lambda: self.q_learner.inc_gamma()))
-        self.button_list.append(
-            Button(self.SCREEN_WIDTH + 130, self.SCREEN_HEIGHT - 390, '-v', lambda: self.q_learner.dec_gamma()))
+        # gamma
+        self.button_list.append(Button(self.SCREEN_WIDTH + 80, self.SCREEN_HEIGHT - 390, '+γ', lambda: self.q_learner.inc_gamma()))
+        self.button_list.append(Button(self.SCREEN_WIDTH + 130, self.SCREEN_HEIGHT - 390, '-v', lambda: self.q_learner.dec_gamma()))
 
-        self.button_list.append(
-            Button(self.SCREEN_WIDTH + 80, self.SCREEN_HEIGHT - 550, '+t', lambda: self.q_learner.inc_updates()))
-        self.button_list.append(
-            Button(self.SCREEN_WIDTH + 130, self.SCREEN_HEIGHT - 550, '-t', lambda: self.q_learner.dec_updates()))
+        # fps
+        self.button_list.append(Button(self.SCREEN_WIDTH + 80, self.SCREEN_HEIGHT - 550, '+t', lambda: self.q_learner.inc_updates()))
+        self.button_list.append(Button(self.SCREEN_WIDTH + 130, self.SCREEN_HEIGHT - 550, '-t', lambda: self.q_learner.dec_updates()))
 
     def inc_updates(self):
         self.updates_per_second += 1
@@ -226,9 +232,7 @@ class FrozenLakeGame(arcade.Window):
     def start(self):
         self.setup()
         self.spawn()
-        self.sound_ambient.play()
-        # the engine doesn't surface the underlying API for looping, this just works when I hacked the core lib.
-        #self.sound_ambient.play(loop=True)
+        self.sound_ambient.play(loop=True)
         arcade.run()
         # q.save()
 
