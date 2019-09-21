@@ -16,11 +16,13 @@ SCREEN_TITLE = 'FrozenLake Q-Learning'
 parser = argparse.ArgumentParser(description='Train or test neural net motor controller.')
 parser.add_argument('--pack', dest='pack', type=str, default='asphalt')
 parser.add_argument('-p', dest='pack', type=str, default='asphalt')
-parser.add_argument('--ground-edges', dest='groundedges', action='store_true', default=False)
+parser.add_argument('--ground-edges', dest='ground_edges', action='store_true', default=False)
+parser.add_argument('--draw-freq', dest='draw_freq', action='store_true', default=False)
 args = parser.parse_args()
 
 pack = args.pack
-GROUND_EDGES = args.groundedges
+GROUND_EDGES = args.ground_edges
+DRAW_FREQ = args.draw_freq
 
 # Assets
 image = {
@@ -230,7 +232,7 @@ class FrozenLakeGame(arcade.Window):
         arcade.run()
         # q.save()
 
-    def write_freq(self):
+    def draw_freq(self):
         """Draws the relative occupation frequency on each state. Illustrates how many steps the algorithm spent in each state to all other states."""
         for i in range(0, self.SIZE ** 2):
             grid_x = i % self.SIZE
@@ -454,7 +456,8 @@ class FrozenLakeGame(arcade.Window):
         arcade.draw_text(f"episode: {self.episode}/{self.episodes}", self.SCREEN_WIDTH + 20, 50,
                          arcade.color.WHITE, font_size=15, bold=True)
 
-        self.write_freq()
+        if DRAW_FREQ:
+            self.draw_freq()
 
         # texts = self.hud_text()
         # for i, text in enumerate(texts):
