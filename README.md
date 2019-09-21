@@ -28,13 +28,13 @@ pip install -r requirements.txt
 Run the simulation:
 
 ```
-python game.py
+python src/game.py
 ```
 
 The simulation supports texture-packs listed in the `images` folder:
 
 ```
-python game.py -p forest
+python src/game.py -p forest
 ```
 
 ## Simulation
@@ -76,23 +76,28 @@ This should also give an idea how inefficient RL often is and how random the app
 
 [![](https://i9.ytimg.com/vi/5OIhS4n9Kfw/mq3.jpg?sqp=CIarkuwF&rs=AOn4CLB5MTMZTtduGqxUvOvJcZg7DmAHDQ)](https://www.youtube.com/watch?v=5OIhS4n9Kfw)
 
-## Reference
+## References
 
-### Assets
+### Credits
 
-1. Game graphics are mainly taken from: https://www.kenney.nl/assets
-1. Sound: http://soundbible.com/royalty-free-sounds-1.html
+Assets are taken from:
+
+1. https://www.kenney.nl/assets
+1. https://opengameart.org/content/lpc-terrain-repack-2
+1. https://opengameart.org/content/lpc-sandrock-alt-colors
+1. https://opengameart.org/content/lpc-modified-art
+1. http://soundbible.com/royalty-free-sounds-1.html
 
 ### Resources
 
 The implementations are based on research from multiple source, some of those are:
 
-1. [Deep Reinforcement Learning Hands-On](https://www.packtpub.com/big-data-and-business-intelligence/deep-reinforcement-learning-hands)
+1. [Deep Reinforcement Learning Hands-On](https://www.packtpub.com/big-data-and-business-intelligence/deep-reinforcement-learning-hands)\
 Maxim Lapan June 20, 2018
-1. Richard S. Sutton and Andrew G. Barto, Second Edition, MIT Press, Cambridge, MA, 2018
-[Reinforcement Learning: An Introduction](http://incompleteideas.net/book/RLbook2018.pdf)
-1. [iX Developer Machine Learning](https://shop.heise.de/katalog/ix-developer-machine-learning)
-This journal has quite some breaking bugs in the demo code, so be aware.
+1. [Reinforcement Learning: An Introduction](http://incompleteideas.net/book/RLbook2018.pdf)\
+Richard S. Sutton and Andrew G. Barto, Second Edition, MIT Press, Cambridge, MA, 2018
+1. [iX 05/2019, iX 06/2019, iX 07/2019](https://shop.heise.de/katalog/ix-05-2019-pdf)\
+Three part series on RL (German).
 1. https://geektutu.com (Chinese)
 
 ## License

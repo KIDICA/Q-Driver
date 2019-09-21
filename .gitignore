@@ -4,3 +4,5 @@ venv
 *.h5
 *.npy
 *.npz
+__pycache__/**
+*.pyc
