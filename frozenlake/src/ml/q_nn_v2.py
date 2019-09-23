@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from custom_frozenlake import FrozenLake
+from env.custom_frozenlake import FrozenLake
 
 lake = FrozenLake()
 

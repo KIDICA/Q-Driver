@@ -1,25 +1,21 @@
-import numpy as np
 import random
-from custom_frozenlake import FrozenLake
-import seaborn as sns
+from env.custom_frozenlake import FrozenLake
 import math
 import time
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib import animation
 
 
 class QLearner:
-    """Learns with epsilon-greedy algorithm."""
+    """Value-iteration with epsilon-greedy strategy."""
 
-    def __init__(self, mdp: FrozenLake):
+    def __init__(self, mdp: FrozenLake, updates_per_second=2):
         # Hyper parameters
         self.SNAPSHOT_STATES = 2000
-        self.EPISODES = 50000
+        self.EPISODES = 100000
         self.LEARNING_RATE = 0.8  # alpha
         self.DISCOUNT_FACTOR = 0.95  # gamma, decays with path length.
         self.EPSILON = 0.9
-        self.updates_per_second = 2
+        self.updates_per_second = updates_per_second
         self.mdp = mdp
         self.Q = None
         self.state_visits = []
@@ -93,14 +89,16 @@ class QLearner:
 
     def train(self, callback=None):
         self.reset()
-
+        running_reward = None
         for i in range(self.EPISODES):
             s = self.mdp.reset()
             done = False
-            rewards = 0
             # invoke_callback = (i % self.CALLBACK_INTERVAL == 0) and (callback is not None)
             invoke_callback = callback is not None
+            episode_steps = 0
+            rewards = 0
             while not done:
+                episode_steps += 1
                 if self.steps % self.SNAPSHOT_STATES == 0:
                     self.state_counter_snapshot()
 
@@ -109,21 +107,23 @@ class QLearner:
                 self.max_visit = max(self.state_counter[s], self.max_visit)
                 a = self.epsilon_greedy(self.Q, s)
                 s_next, r, done, info = self.mdp.step(a)
-                next_q = r + self.DISCOUNT_FACTOR * np.max(self.Q[s_next, :])
 
-                # self.Q[s, a] += self.LEARNING_RATE * (r + self.DISCOUNT_FACTOR * np.max(self.Q[s, :]) - self.Q[s, a])
-                self.Q[s, a] = ((1 - self.LEARNING_RATE) * self.Q[s, a]) + (self.LEARNING_RATE * next_q)
-
-                if invoke_callback:
-                    continue_training = callback(self.mdp.move[a], self.steps, rewards, i, self.EPISODES)
-                    if not continue_training:
-                        return
+                self.Q[s, a] += self.LEARNING_RATE * (r + self.DISCOUNT_FACTOR * np.max(self.Q[s, :]) - self.Q[s, a])
+                # next_q = r + self.DISCOUNT_FACTOR * np.max(self.Q[s_next, :])
+                # self.Q[s, a] = ((1 - self.LEARNING_RATE) * self.Q[s, a]) + (self.LEARNING_RATE * next_q)
 
                 s = s_next
                 rewards += r
                 self.steps += 1
+                running_reward = rewards if running_reward is None else running_reward * 0.99 + rewards * 0.01
 
-                time.sleep(1 / self.updates_per_second)
+                if invoke_callback:
+                    continue_training = callback(self.mdp.move[a], self.steps, rewards, i, self.EPISODES, episode_steps)
+                    if not continue_training:
+                        return
+
+                if self.updates_per_second > 0:
+                    time.sleep(1 / self.updates_per_second)
 
             if i % self.SNAPSHOT_STATES == 0:
                 # Snapshot current counter for animation later
@@ -137,42 +137,19 @@ class QLearner:
         print(repr(self.Q))
 
 
-class Drawer:
-    def __init__(self, q: QLearner):
-        # Norm to 1.0
-        print('steps', q.steps)
-        q.state_visits = q.state_visits / q.max_visit
-        q.state_visits[-1][-1][-1] = -1
-        self.q = q
-        self.size = len(q.state_visits)
-        sns.set()
-        # Generate heat map.
-        self.fig = plt.figure()
-        self.cmap = 'magma'
+if __name__ == "__main__":
+    from env.custom_frozenlake import FrozenLake
 
-    def init(self):
-        # values = self.q.state_visits[-1]
-        # print(values)
-        # size = int(math.sqrt(self.q.mdp.state_count()))
-        # labels = np.array([[round(values[j][i],3) for i in range(size)] for j in range(size)])
-        # print('labels', labels)
-        ax = sns.heatmap(self.q.state_visits[-1], cmap=self.cmap, xticklabels=False, yticklabels=False, square=True,
-                         annot=True, vmin=0.0, vmax=1.0, annot_kws={"size": 6}, linewidths=1, cbar=True,
-                         linecolor='white')
-        ax.set_title(
-            f"Value-Iteration: ε={round(self.q.EPSILON, 2)}, γ={round(self.q.DISCOUNT_FACTOR, 2)}, α={round(self.q.LEARNING_RATE, 2)}, steps={self.q.steps}")
+    q = QLearner(FrozenLake(), updates_per_second=0)
+    max_r = 0
 
-    def animate(self, i):
-        print("i:", i, self.size)
-        data = self.q.state_visits[i]
-        sns.heatmap(data, cmap=self.cmap, xticklabels=False, yticklabels=False, square=True, annot=False, vmin=0.0,
-                    vmax=1.0, linewidths=1, cbar=False, linecolor='white')
 
-    def save(self):
-        fps = 15
-        intervals = int(1 / fps * 1000)
-        anim = animation.FuncAnimation(self.fig, self.animate, init_func=self.init, cache_frame_data=True,
-                                       frames=self.size, repeat=False, interval=intervals)
-        anim.save(
-            f"q_learn_epis_{self.q.EPISODES}_snap_{self.q.SNAPSHOT_STATES}_eps_{self.q.EPSILON}_gamma_{self.q.DISCOUNT_FACTOR}_alpha_{self.q.LEARNING_RATE}.mp4",
-            writer='ffmpeg', bitrate=5000, dpi=600)
+    def update(move, steps, rewards, i, episodes, episode_steps, running_reward):
+        global max_r
+        max_r = max(rewards, max_r)
+        if running_reward > 0:
+            print(max_r, rewards, round(rewards, 2), running_reward, i)
+        return True
+
+
+    q.train(update)

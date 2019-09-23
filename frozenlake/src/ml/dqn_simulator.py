@@ -2,7 +2,7 @@ import gym
 from gym.envs.registration import register
 import numpy as np
 
-from dqn import DeepTDLambdaLearner
+from ml.dqn import DeepTDLambdaLearner
 
 register(
     id='FrozenLakeNotSlippery-v0',

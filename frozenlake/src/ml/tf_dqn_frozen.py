@@ -86,7 +86,7 @@ render = args.render  # display the game environment
 running_reward = None
 load = args.load
 MAP = None
-STATE_COUNT = 4*4 #len(''.join(MAP))
+STATE_COUNT = 4 * 4  # len(''.join(MAP))
 
 
 def to_one_hot(i, n_classes=None):

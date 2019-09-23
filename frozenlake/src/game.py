@@ -3,87 +3,56 @@ import os
 import numpy as np
 import threading
 import time
-from buttons import Button
+from core.buttons import TextButton, ImageButton, Buttons
 from collections import deque
-from custom_frozenlake import FrozenLake
+from env.frozenlake2 import CustomFrozenLakeEnv as FrozenLake
 import argparse
-from media import AudioPlayer
+from core.media import AudioPlayer
+from core.assets import Sound, Texture
 
-lake = FrozenLake()
-SIZE = lake.size
-SPRITE_SIZE = 128
-SCREEN_TITLE = 'FrozenLake Q-Learning'
-
-parser = argparse.ArgumentParser(description='Train or test neural net motor controller.')
+parser = argparse.ArgumentParser(description='Customize the game launcher with following arguments.')
 parser.add_argument('--pack', dest='pack', type=str, default='asphalt')
 parser.add_argument('-p', dest='pack', type=str, default='asphalt')
 parser.add_argument('--ground-edges', dest='ground_edges', action='store_true', default=False)
 parser.add_argument('--draw-freq', dest='draw_freq', action='store_true', default=False)
 args = parser.parse_args()
 
-pack = args.pack
+# Module vars
+
+PACK = args.pack
 GROUND_EDGES = args.ground_edges
 DRAW_FREQ = args.draw_freq
-MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
+
+lake = FrozenLake()
+
+SIZE = lake.size
+SPRITE_SIZE = 128
+SCREEN_TITLE = 'FrozenLake Q-Learning'
+
+tex = Texture(PACK)
+sound = Sound(PACK)
 
 
-def image_path(file):
-    return f"{MODULE_PATH}/../pack/{pack}/textures/{file}"
+class Field:
+    HOLE = b'H'
+    GROUND = b'F'
+    START = b'S'
+    GOAL = b'G'
 
 
-def sound_path(file):
-    return f"{MODULE_PATH}/../pack/{pack}/sounds/{file}"
+FieldName = {None: 'None', Field.HOLE: 'HOLE', Field.GROUND: 'GROUND', Field.START: 'START', Field.GOAL: 'GOAL'}
 
 
-# Assets
-image = {
-    'UNKNOWN': image_path('hidden.png'),
-    'CHAR_LEFT': image_path('char_left.png'),
-    'CHAR_RIGHT': image_path('char_right.png'),
-    'CHAR_UP': image_path('char_up.png'),
-    'CHAR_DOWN': image_path('char_down.png'),
-    'EMPTY': image_path('hole.png'),
-    'GOAL': image_path('goal.png'),
-    'TREE': image_path('decor.png'),
-    'EDGE_TOP': image_path('edge_top.png'),
-    'EDGE_LEFT': image_path('edge_left.png'),
-    'EDGE_RIGHT': image_path('edge_right.png'),
-    'EDGE_BOTTOM': image_path('edge_bottom.png'),
-    'EDGE_BOTTOM_LEFT': image_path('edge_bottom_left.png'),
-    'EDGE_BOTTOM_RIGHT': image_path('edge_bottom_right.png'),
-    'EDGE_TOP_LEFT': image_path('edge_top_left.png'),
-    'EDGE_TOP_RIGHT': image_path('edge_top_right.png'),
-    'GROUND': image_path('ground.png'),
-    'GROUND_TOP_LEFT': image_path('ground_top_left.png'),
-    'GROUND_TOP_RIGHT': image_path('ground_top_right.png'),
-    'GROUND_BOTTOM_LEFT': image_path('ground_bottom_left.png'),
-    'GROUND_BOTTOM_RIGHT': image_path('ground_bottom_right.png'),
-    'GROUND_TOP': image_path('ground_top.png'),
-    'GROUND_LEFT': image_path('ground_left.png'),
-    'GROUND_RIGHT': image_path('ground_right.png'),
-    'GROUND_BOTTOM': image_path('ground_bottom.png'),
-    'KILL': image_path('kill.png'),
-}
-
-sound = {
-    'AMBIENT': sound_path('ambient.wav'),
-    'HONK': sound_path('honk.wav')
-}
-
-HOLE = 'H'
-GROUND = 'F'
-START = 'S'
-GOAL = 'G'
-
-UP = 'UP'
-LEFT = 'LEFT'
-RIGHT = 'RIGHT'
-DOWN = 'DOWN'
+class Dir:
+    UP = 'UP'
+    LEFT = 'LEFT'
+    RIGHT = 'RIGHT'
+    DOWN = 'DOWN'
 
 
-class FrozenLakeGame(arcade.Window):
+class Game(arcade.Window):
     def __init__(self, width, height, qlearner=None):
-        super().__init__(width + 300, width, SCREEN_TITLE)
+        super().__init__(width + 350, width, SCREEN_TITLE)
 
         file_path = os.path.dirname(os.path.abspath(__file__))
         os.chdir(file_path)
@@ -111,26 +80,26 @@ class FrozenLakeGame(arcade.Window):
         self.START_Y = self.SPRITE_RESIZE_HALF
         self.OFFSET = self.SPRITE_RESIZE_HALF
 
-        self.sound_ambient = AudioPlayer(sound['AMBIENT'])
-        self.sound_honk = arcade.load_sound(sound['HONK'])
+        self.sound_ambient = AudioPlayer(sound.AMBIENT)
+        self.sound_honk = arcade.load_sound(sound.HONK)
 
         self.is_running = True
         self.key_down = False
 
         # Transpose the map entries, the screen coordinates draw order makes it necessary.
-        self.map = np.array(list(map(lambda row: list(row), self.lake.map))).transpose()
+        self.map = self.lake.map.transpose()
 
         self.uncovered = np.zeros((self.SIZE, self.SIZE), dtype=np.uint8)
         self.uncovered[0][0] = 1
-        self.player_up = self.sprite_from_index(0, 0, image['CHAR_UP'])
-        self.player_down = self.sprite_from_index(0, 0, image['CHAR_DOWN'])
-        self.player_left = self.sprite_from_index(0, 0, image['CHAR_LEFT'])
-        self.player_right = self.sprite_from_index(0, 0, image['CHAR_RIGHT'])
+        self.uncovered[-1][-1] = 1
+        self.player_up = self.sprite_from_index(0, 0, tex.CHAR_UP)
+        self.player_down = self.sprite_from_index(0, 0, tex.CHAR_DOWN)
+        self.player_left = self.sprite_from_index(0, 0, tex.CHAR_LEFT)
+        self.player_right = self.sprite_from_index(0, 0, tex.CHAR_RIGHT)
         self.player = self.player_right
         self.player_x = 0
         self.player_y = 0
         self.set_mouse_visible(True)
-        self.score = 0
         self.deaths = 0
         self.move_count = 0
         self.sprites = None
@@ -152,6 +121,7 @@ class FrozenLakeGame(arcade.Window):
         self.episodes = 0
         self.episode = 0
         self.steps = 0
+        self.episode_steps = 0
 
         self.selection = None
 
@@ -160,24 +130,30 @@ class FrozenLakeGame(arcade.Window):
         self.text_font_size = 15
         self.text_line_spacing = 20
 
-        self.button_list = []
+        self.button_list = Buttons([
+            # epsilon
+            TextButton(center_x=self.SCREEN_WIDTH + 80, center_y=self.SCREEN_HEIGHT - 100, text='+ε', on_click=self.q_learner.inc_epsilon),
+            TextButton(center_x=self.SCREEN_WIDTH + 130, center_y=self.SCREEN_HEIGHT - 100, text='-ε', on_click=self.q_learner.dec_epsilon),
+            # alpha
+            TextButton(center_x=self.SCREEN_WIDTH + 80, center_y=self.SCREEN_HEIGHT - 250, text='+α', on_click=self.q_learner.inc_alpha),
+            TextButton(center_x=self.SCREEN_WIDTH + 130, center_y=self.SCREEN_HEIGHT - 250, text='-α', on_click=self.q_learner.dec_alpha),
+            # gamma
+            TextButton(center_x=self.SCREEN_WIDTH + 80, center_y=self.SCREEN_HEIGHT - 390, text='+γ', on_click=self.q_learner.inc_gamma),
+            TextButton(center_x=self.SCREEN_WIDTH + 130, center_y=self.SCREEN_HEIGHT - 390, text='-v', on_click=self.q_learner.dec_gamma),
+            # fps
+            TextButton(center_x=self.SCREEN_WIDTH + 80, center_y=self.SCREEN_HEIGHT - 550, text='+t', on_click=self.q_learner.inc_updates),
+            TextButton(center_x=self.SCREEN_WIDTH + 130, center_y=self.SCREEN_HEIGHT - 550, text='-t', on_click=self.q_learner.dec_updates),
+        ])
+
+        def select(field):
+            self.selection = field
+
+        self.image_buttons = Buttons([
+            ImageButton(center_x=self.SCREEN_WIDTH + 150, center_y=200, width=50, height=50, img=tex.GROUND, on_click=lambda: select(Field.GROUND)),
+            ImageButton(center_x=self.SCREEN_WIDTH + 250, center_y=200, width=50, height=50, img=tex.HOLE, on_click=lambda: select(Field.HOLE))
+        ])
+
         self.memory = deque()
-
-        # epsilon
-        self.button_list.append(Button(self.SCREEN_WIDTH + 80, self.SCREEN_HEIGHT - 100, '+ε', lambda: self.q_learner.inc_epsilon()))
-        self.button_list.append(Button(self.SCREEN_WIDTH + 130, self.SCREEN_HEIGHT - 100, '-ε', lambda: self.q_learner.dec_epsilon()))
-
-        # alpha
-        self.button_list.append(Button(self.SCREEN_WIDTH + 80, self.SCREEN_HEIGHT - 250, '+α', lambda: self.q_learner.inc_alpha()))
-        self.button_list.append(Button(self.SCREEN_WIDTH + 130, self.SCREEN_HEIGHT - 250, '-α', lambda: self.q_learner.dec_alpha()))
-
-        # gamma
-        self.button_list.append(Button(self.SCREEN_WIDTH + 80, self.SCREEN_HEIGHT - 390, '+γ', lambda: self.q_learner.inc_gamma()))
-        self.button_list.append(Button(self.SCREEN_WIDTH + 130, self.SCREEN_HEIGHT - 390, '-v', lambda: self.q_learner.dec_gamma()))
-
-        # fps
-        self.button_list.append(Button(self.SCREEN_WIDTH + 80, self.SCREEN_HEIGHT - 550, '+t', lambda: self.q_learner.inc_updates()))
-        self.button_list.append(Button(self.SCREEN_WIDTH + 130, self.SCREEN_HEIGHT - 550, '-t', lambda: self.q_learner.dec_updates()))
 
     def inc_updates(self):
         self.updates_per_second += 1
@@ -187,6 +163,7 @@ class FrozenLakeGame(arcade.Window):
 
     def has_beaten_game(self, steps):
         if steps % 5000 == 0:
+            global lake
             lake = FrozenLake()
             # report every 5000 steps, test 100 games to get avarage point score for statistics and verify if it is solved
             rew_average = 0.
@@ -208,20 +185,21 @@ class FrozenLakeGame(arcade.Window):
 
         return False
 
-    def act(self, action, steps, reward, episode, episodes):
+    def act(self, action, steps, reward, episode, episodes, episode_steps):
         self.rewards = reward
         self.episode = episode + 1
         self.episodes = episodes
         self.steps = steps
+        self.episode_steps = episode_steps
         # self.rewards += rewards
         # self.info2 = f"Q(s={state}, a')=" + ', '.join(list(map(lambda x: f"{x:.5f}", action_prob)))
-        if action == LEFT:
+        if action == Dir.LEFT:
             self.left()
-        elif action == RIGHT:
+        elif action == Dir.RIGHT:
             self.right()
-        elif action == UP:
+        elif action == Dir.UP:
             self.up()
-        elif action == DOWN:
+        elif action == Dir.DOWN:
             self.down()
 
         # if (self.has_beaten_game(steps)):
@@ -264,13 +242,13 @@ class FrozenLakeGame(arcade.Window):
             if self.executing:
                 action_number = np.argmax(self.episode_q[self.episode_current_state, :])
                 action = self.q_learner.mdp.move[action_number]
-                if action == UP:
+                if action == Dir.UP:
                     self.up()
-                elif action == LEFT:
+                elif action == Dir.LEFT:
                     self.left()
-                elif action == RIGHT:
+                elif action == Dir.RIGHT:
                     self.right()
-                elif action == DOWN:
+                elif action == Dir.DOWN:
                     self.down()
 
             time.sleep(1 / self.updates_per_second)
@@ -278,10 +256,7 @@ class FrozenLakeGame(arcade.Window):
     def spawn(self):
         """The ML algorithm needs to run within another thread, otherwise it will block the game engine loop."""
         if self.q_learner is not None:
-            self.thread = threading.Thread(
-                target=lambda: self.q_learner.train(
-                    lambda action, steps, reward, episode, episodes: self.act(action, steps, reward, episode,
-                                                                              episodes)))
+            self.thread = threading.Thread(target=lambda: self.q_learner.train(self.act))
             self.thread.daemon = True
             self.thread.start()
 
@@ -310,13 +285,11 @@ class FrozenLakeGame(arcade.Window):
         """Convert cartesian coordinates to grid coordinates."""
         # Edges don't belong to the grid.
         if x < self.SPRITE_RESIZE or x > (self.SCREEN_WIDTH - self.SPRITE_RESIZE):
-            return None
+            return None, None
         if y < self.SPRITE_RESIZE or y > (self.SCREEN_HEIGHT - self.SPRITE_RESIZE):
-            return None
+            return None, None
 
-        grid_x, grid_y = x // self.SPRITE_RESIZE - 1, self.SIZE - y // self.SPRITE_RESIZE
-
-        return grid_x, grid_y, self.map[grid_x][grid_y]
+        return x // self.SPRITE_RESIZE - 1, self.SIZE - y // self.SPRITE_RESIZE
 
     def sprite_from_index(self, x, y, img):
         _x, _y = self.coord(x, y)
@@ -327,69 +300,56 @@ class FrozenLakeGame(arcade.Window):
         self.wall_list = arcade.SpriteList()
         self.sprites = arcade.SpriteList()
 
-        # Level borders
-        LAST = self.SIZE_WITH_EDGE - 1
+        # Outer level frame
+        last_index = self.SIZE_WITH_EDGE - 1
         for x in range(self.SIZE_WITH_EDGE):
             for y in range(self.SIZE_WITH_EDGE):
                 pos_x = self.SPRITE_RESIZE * x + self.SPRITE_RESIZE_HALF
                 pos_y = self.SPRITE_RESIZE * y + self.SPRITE_RESIZE_HALF
                 img = None
                 if x == 0 and y == 0:
-                    img = image['EDGE_BOTTOM_LEFT']
-                elif x == LAST and y == 0:
-                    img = image['EDGE_BOTTOM_RIGHT']
-                elif x == 0 and y == LAST:
-                    img = image['EDGE_TOP_LEFT']
-                elif x == LAST and y == LAST:
-                    img = image['EDGE_TOP_RIGHT']
-                elif y == 0 and 0 < x < LAST:
-                    img = image['EDGE_BOTTOM']
-                elif y == LAST and 0 < x < LAST:
-                    img = image['EDGE_TOP']
-                elif x == 0 and 0 < y < LAST:
-                    img = image['EDGE_LEFT']
-                elif x == LAST and 0 < y < LAST:
-                    img = image['EDGE_RIGHT']
+                    img = tex.EDGE_BOTTOM_LEFT
+                elif x == last_index and y == 0:
+                    img = tex.EDGE_BOTTOM_RIGHT
+                elif x == 0 and y == last_index:
+                    img = tex.EDGE_TOP_LEFT
+                elif x == last_index and y == last_index:
+                    img = tex.EDGE_TOP_RIGHT
+                elif y == 0 and 0 < x < last_index:
+                    img = tex.EDGE_BOTTOM
+                elif y == last_index and 0 < x < last_index:
+                    img = tex.EDGE_TOP
+                elif x == 0 and 0 < y < last_index:
+                    img = tex.EDGE_LEFT
+                elif x == last_index and 0 < y < last_index:
+                    img = tex.EDGE_RIGHT
 
                 if img is not None:
                     self.border_ground.append(self.sprite(x=pos_x, y=pos_y, img=img))
 
-                # Bottom edge
-                # self.border_ground.append(self.sprite(x=offset, y=self.SCREEN_HEIGHT - self.SPRITE_RESIZE_HALF, img=img))
-                # self.wall_list.append(self.sprite(x=offset, y=self.SCREEN_HEIGHT - self.SPRITE_RESIZE_HALF))
-                # Top edge
-                # self.border_ground.append(self.sprite(x=offset, y=self.SPRITE_RESIZE_HALF, img=img))
-                # self.wall_list.append(self.sprite(x=offset, y=self.SPRITE_RESIZE_HALF))
-                # Left, x = Distance from left wall
-                # self.border_ground.append(self.sprite(y=offset, x=self.SPRITE_RESIZE_HALF, img=img))
-                # self.wall_list.append(self.sprite(y=offset, x=self.SPRITE_RESIZE_HALF))
-                # Right
-                # self.border_ground.append(self.sprite(y=offset, x=self.SCREEN_WIDTH - self.SPRITE_RESIZE_HALF, img=img))
-                # self.wall_list.append(self.sprite(y=offset, x=self.SCREEN_WIDTH - self.SPRITE_RESIZE_HALF))
-
         # Inner field
-        LAST = self.SIZE - 1
+        last_index = self.SIZE - 1
         for x in range(self.SIZE):
             for y in range(self.SIZE):
-                img = image['GROUND']
+                img = tex.GROUND
                 # The edges of the inner field can also have special tiles.
                 if GROUND_EDGES:
                     if x == 0 and y == 0:
-                        img = image['GROUND_TOP_LEFT']
-                    elif x == LAST and y == 0:
-                        img = image['GROUND_TOP_RIGHT']
-                    elif x == 0 and y == LAST:
-                        img = image['GROUND_BOTTOM_LEFT']
-                    elif x == LAST and y == LAST:
-                        img = image['GROUND_BOTTOM_RIGHT']
-                    elif y == 0 and 0 < x < LAST:
-                        img = image['GROUND_TOP']
-                    elif y == LAST and 0 < x < LAST:
-                        img = image['GROUND_BOTTOM']
-                    elif x == 0 and 0 < y < LAST:
-                        img = image['GROUND_LEFT']
-                    elif x == LAST and 0 < y < LAST:
-                        img = image['GROUND_RIGHT']
+                        img = tex.GROUND_TOP_LEFT
+                    elif x == last_index and y == 0:
+                        img = tex.GROUND_TOP_RIGHT
+                    elif x == 0 and y == last_index:
+                        img = tex.GROUND_BOTTOM_LEFT
+                    elif x == last_index and y == last_index:
+                        img = tex.GROUND_BOTTOM_RIGHT
+                    elif y == 0 and 0 < x < last_index:
+                        img = tex.GROUND_TOP
+                    elif y == last_index and 0 < x < last_index:
+                        img = tex.GROUND_BOTTOM
+                    elif x == 0 and 0 < y < last_index:
+                        img = tex.GROUND_LEFT
+                    elif x == last_index and 0 < y < last_index:
+                        img = tex.GROUND_RIGHT
                 s = self.sprite_from_index(x, y, img)
                 self.sprites.append(s)
 
@@ -397,16 +357,46 @@ class FrozenLakeGame(arcade.Window):
 
     def on_mouse_press(self, x, y, button, modifiers):
         if self.selection is not None:
-            x, y, _ = self.cart_to_grid(x, y)
-            self.map[x][y] = self.selection
+            grid_x, grid_y = self.cart_to_grid(x, y)
+            if grid_x is not None and grid_y is not None:
+                self.set_map(grid_x, grid_y, self.selection)
 
-        for button in self.button_list:
-            button.check_click(x, y)
+        self.button_list.click(x, y)
 
     def on_mouse_release(self, x, y, button, modifiers):
-        for button in self.button_list:
-            if button.pressed:
-                button.on_release()
+        self.button_list.unclick(x, y)
+
+    def hud_text(self):
+        return [
+            "KEYS:",
+            "+: Speed up",
+            "-: Speed down",
+            "G: Place 'ground'",
+            "H: Place 'hole'",
+            " ",
+            "INFO:",
+            f"Selection: {FieldName[self.selection]}",
+            f"Current path length: {self.episode_steps}",
+            f"Total steps: {self.steps}",
+            f"Total Deaths: {self.deaths}",
+            f"Episode: {self.episode}/{self.episodes}",
+        ]
+
+    def hyper_param_text(self):
+        return [
+            f"ε: {round(self.q_learner.EPSILON, 2)}",
+            f"α: {round(self.q_learner.LEARNING_RATE, 2)}",
+            f"γ: {round(self.q_learner.DISCOUNT_FACTOR, 2)}",
+            f"1/t: {self.q_learner.updates_per_second}",
+        ]
+
+    @staticmethod
+    def draw_text(texts, start_x, start_y=50, offset_y=25, font_size=15):
+        if offset_y > 0:
+            texts = reversed(texts)
+
+        for i, text in enumerate(texts):
+            arcade.draw_text(text, start_x, start_y + i * offset_y, arcade.color.WHITE, font_size=font_size, bold=True)
 
     def on_draw(self):
         # This comma    nd has to happen before we start drawing
@@ -421,91 +411,59 @@ class FrozenLakeGame(arcade.Window):
         # Dynamic drawings
         for x in range(self.SIZE):
             for y in range(self.SIZE):
-                c = self.map[x][y]
+                c = self.get_map(x, y)
                 s = None
-                if c == GOAL:
-                    s = self.sprite_from_index(x, y, image['GOAL'])
-                elif c == HOLE:
-                    s = self.sprite_from_index(x, y, image['EMPTY'])
+                if c == Field.GOAL:
+                    s = self.sprite_from_index(x, y, tex.GOAL)
+                elif c == Field.HOLE:
+                    s = self.sprite_from_index(x, y, tex.HOLE)
                 # elif c == GROUND:
-                #    s = self.sprite_from_index(x, y, image['GROUND'])
+                #    s = self.sprite_from_index(x, y, texture.GROUND)
                 if s is not None:
                     s.draw()
 
                 if self.uncovered[x][y] == 0:
-                    self.sprite_from_index(x, y, image['UNKNOWN']).draw()
-                elif self.map[x][y] == HOLE:
-                    self.sprite_from_index(x, y, image['KILL']).draw()
+                    self.sprite_from_index(x, y, tex.UNKNOWN).draw()
+                elif self.get_map(x, y) == Field.HOLE:
+                    self.sprite_from_index(x, y, tex.KILL).draw()
 
         self.player.draw()
+        self.button_list.draw()
 
-        # Draw the buttons
-        for button in self.button_list:
-            button.draw()
-
-        arcade.draw_text(f"ε: {round(self.q_learner.EPSILON, 2)}", self.SCREEN_WIDTH + 30, self.SCREEN_HEIGHT - 50,
-                         arcade.color.WHITE, font_size=25, bold=True)
-        arcade.draw_text(f"α: {round(self.q_learner.LEARNING_RATE, 2)}", self.SCREEN_WIDTH + 30,
-                         self.SCREEN_HEIGHT - 200,
-                         arcade.color.WHITE, font_size=25, bold=True)
-        arcade.draw_text(f"γ: {round(self.q_learner.DISCOUNT_FACTOR, 2)}", self.SCREEN_WIDTH + 30,
-                         self.SCREEN_HEIGHT - 350,
-                         arcade.color.WHITE, font_size=25, bold=True)
-        arcade.draw_text(f"1/t: {self.q_learner.updates_per_second}", self.SCREEN_WIDTH + 30, self.SCREEN_HEIGHT - 500,
-                         arcade.color.WHITE, font_size=25, bold=True)
-        arcade.draw_text(f"steps: {self.steps}", self.SCREEN_WIDTH + 20, 100,
-                         arcade.color.WHITE, font_size=15, bold=True)
-        arcade.draw_text(f"deaths: {self.deaths}", self.SCREEN_WIDTH + 20, 75,
-                         arcade.color.WHITE, font_size=15, bold=True)
-        arcade.draw_text(f"episode: {self.episode}/{self.episodes}", self.SCREEN_WIDTH + 20, 50,
-                         arcade.color.WHITE, font_size=15, bold=True)
+        text2 = self.hyper_param_text()
+        Game.draw_text(texts=text2, start_x=self.SCREEN_WIDTH + 40, start_y=self.SCREEN_HEIGHT - 50, offset_y=-150, font_size=25)
+        Game.draw_text(texts=self.hud_text(), start_x=self.SCREEN_WIDTH + 40)
 
         if DRAW_FREQ:
             self.draw_freq()
-
-        # texts = self.hud_text()
-        # for i, text in enumerate(texts):
-        #   arcade.draw_text(text, self.text_offset_x, self.text_line_spacing * i + self.text_offset_y,
-        #                     arcade.color.BLACK, font_size=self.text_font_size, bold=True)
-
-    def hud_text(self):
-        messages = [
-            f"Score: {self.score} Deaths: {self.deaths} Steps: {self.move_count} {self.info}",
-            f"Moves: {' > '.join(self.moves)}",
-            self.info2
-        ]
-        if self.message is not None:
-            messages.append(self.message)
-
-        return messages
 
     def up(self):
         self.move_count += 1
         self.player = self.player_up
         self.player_y = max(0, self.player_y - 1)
         self.uncovered[self.player_x][self.player_y] = 1
-        self.push_move(UP)
+        self.push_move(Dir.UP)
 
     def down(self):
         self.move_count += 1
         self.player = self.player_down
         self.player_y = min(self.SIZE - 1, self.player_y + 1)
         self.uncovered[self.player_x][self.player_y] = 1
-        self.push_move(DOWN)
+        self.push_move(Dir.DOWN)
 
     def left(self):
         self.move_count += 1
         self.player = self.player_left
         self.player_x = max(0, self.player_x - 1)
         self.uncovered[self.player_x][self.player_y] = 1
-        self.push_move(LEFT)
+        self.push_move(Dir.LEFT)
 
     def right(self):
         self.move_count += 1
         self.player = self.player_right
         self.player_x = min(self.SIZE - 1, self.player_x + 1)
         self.uncovered[self.player_x][self.player_y] = 1
-        self.push_move(RIGHT)
+        self.push_move(Dir.RIGHT)
 
     def push_move(self, move):
         if len(self.moves) > 3:
@@ -526,9 +484,13 @@ class FrozenLakeGame(arcade.Window):
         elif key == arcade.key.LEFT:
             self.left()
         elif key == arcade.key.H:
-            self.selection = HOLE
+            self.selection = Field.HOLE
         elif key == arcade.key.G:
-            self.selection = GROUND
+            self.selection = Field.GROUND
+        elif key == arcade.key.PLUS:
+            self.q_learner.inc_updates()
+        elif key == args.key.MINUS:
+            self.q_learner.dec_updates()
 
         self.key_down = True
 
@@ -538,7 +500,6 @@ class FrozenLakeGame(arcade.Window):
     def dead(self):
         self.player_x = 0
         self.player_y = 0
-        self.score -= 10
         self.deaths += 1
         arcade.play_sound(self.sound_honk)
 
@@ -547,9 +508,6 @@ class FrozenLakeGame(arcade.Window):
         self.message = 'WON!!!'
 
     def restart(self):
-        time.sleep(2)
-        self.t.do_run = False
-        self.t.join()
         self.reset()
 
     def respawn(self):
@@ -560,35 +518,47 @@ class FrozenLakeGame(arcade.Window):
         """The entire game is reset here."""
         self.player_x = 0
         self.player_y = 0
-        self.score = 0
         self.deaths = 0
         self.move_count = 0
         self.has_won = False
         self.message = None
         self.uncovered = np.zeros((self.SIZE, self.SIZE), dtype=np.uint8)
         self.uncovered[0][0] = 1
+        self.uncovered[-1][-1] = 1
         self.is_running = True
         self.rewards = 0
         self.selection = None
 
-    def update(self, delta_time):
-        c = self.map[self.player_x][self.player_y]
+    def get_map(self, x, y):
+        return self.map[x][y]
 
-        if c == HOLE:
+    def set_map(self, x, y, c):
+        """"Notice that draw order and logical map order are transposed because of screen coordinates."""
+        self.map[x][y] = c
+        m = self.lake.map.transpose()
+        m[x][y] = c
+        self.lake.map = m.transpose()
+
+    def update(self, delta_time):
+        if self.has_won:
+            self.restart()
+            return
+
+        c = self.get_map(self.player_x, self.player_y)
+
+        if c == Field.HOLE:
             self.dead()
-        elif c == GOAL:
+        elif c == Field.GOAL:
             self.won()
-            self.t = threading.Thread(target=self.restart)
-            self.t.start()
 
         self.player.center_x, self.player.center_y = self.coord(self.player_x, self.player_y)
 
 
 if __name__ == "__main__":
-    from custom_frozenlake import FrozenLake
-    from q_learn import QLearner
+    from env.custom_frozenlake import FrozenLake
+    from ml.q_learn import QLearner
     from screeninfo import get_monitors
 
-    height = int(get_monitors()[0].height * 0.85)
-    game = FrozenLakeGame(height, 900, QLearner(FrozenLake()))
+    height = int(get_monitors()[0].height * 0.9)
+    game = Game(height, 900, QLearner(FrozenLake()))
     game.start()
