@@ -1,4 +1,4 @@
-# AI-Hacking
+# Q-Driver
 
 A collection of AI experiments mainly based on Reinforcement Learning methods.
 
